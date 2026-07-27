@@ -1,0 +1,113 @@
+name: Spectest
+description: Run your spectest suite
+branding:
+  icon: check-circle
+  color: purple
+
+inputs:
+  version:
+    description: >-
+      CLI release to install, e.g. `v0.2.36`. Defaults to the newest release.
+    required: false
+    default: latest
+  project:
+    description: >-
+      Spectest project id (`proj_…`). Only needed when one repository backs
+      several projects — otherwise it is resolved from the repository's
+      connection in Settings → GitHub.
+    required: false
+    default: ''
+  case:
+    description: Run a single test case (its id) plus its ancestors.
+    required: false
+    default: ''
+  path:
+    description: Project directory containing `spectest/`.
+    required: false
+    default: '.'
+
+runs:
+  using: composite
+  steps:
+    - name: Install the spectest CLI
+      shell: bash
+      env:
+        SPECTEST_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+
+        # Only the two platforms we publish binaries for. Fail here with
+        # something actionable rather than 404-ing on the download.
+        case "$(uname -s)/$(uname -m)" in
+          Linux/x86_64)  asset_suffix="x86_64-unknown-linux-musl" ;;
+          Darwin/arm64)  asset_suffix="aarch64-apple-darwin" ;;
+          *)
+            echo "::error::spectest publishes binaries for Linux x86_64 and macOS arm64 only" \
+                 "(this runner is $(uname -s)/$(uname -m)). Use ubuntu-latest or macos-latest."
+            exit 1 ;;
+        esac
+
+        repo=specific-dev/spectest
+        if [ "$SPECTEST_VERSION" = latest ]; then
+          version=$(curl -fsSL "https://api.github.com/repos/$repo/releases/latest" \
+                    | grep -m1 '"tag_name"' | cut -d'"' -f4)
+          if [ -z "$version" ]; then
+            echo "::error::could not resolve the latest spectest release"; exit 1
+          fi
+        else
+          version="$SPECTEST_VERSION"
+        fi
+        # Release tags are `vX.Y.Z`; asset names carry the bare version.
+        bare="${version#v}"
+
+        dest="$RUNNER_TEMP/spectest-bin"
+        mkdir -p "$dest"
+        url="https://github.com/$repo/releases/download/$version/spectest-$bare-$asset_suffix.tar.gz"
+        echo "Installing spectest $version from $url"
+        curl -fsSL "$url" | tar -xz -C "$dest"
+        chmod +x "$dest/spectest"
+        echo "$dest" >> "$GITHUB_PATH"
+
+    - name: Check we can authenticate
+      shell: bash
+      run: |
+        set -euo pipefail
+        # `ACTIONS_ID_TOKEN_REQUEST_URL` is only set when the job has
+        # `id-token: write`. Without it the CLI has no way to authenticate, so
+        # say exactly what is missing instead of failing later with a generic
+        # "not signed in".
+        #
+        # There is deliberately no `api-key` input: OIDC needs no stored
+        # secret, and an input would put long-lived keys into workflow YAML in
+        # plain sight for no benefit.
+        if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+          echo "::error::spectest could not authenticate. Add to the job:"
+          echo "::error::  permissions:"
+          echo "::error::    id-token: write"
+          exit 1
+        fi
+
+    - name: Run the suite
+      shell: bash
+      working-directory: ${{ inputs.path }}
+      env:
+        # The control plane is fixed, not an input: pointing a CI run at
+        # another endpoint is not something a workflow should be able to do by
+        # editing one line, and every other endpoint is someone's private
+        # deployment.
+        SPECTEST_SERVER: spectest.specific.dev:7878
+        SPECTEST_PROJECT: ${{ inputs.project }}
+        SPECTEST_CASE: ${{ inputs.case }}
+      run: |
+        set -euo pipefail
+        args=()
+        [ -n "${SPECTEST_PROJECT:-}" ] && args+=(--project-id "$SPECTEST_PROJECT")
+        [ -n "${SPECTEST_CASE:-}" ] && args+=(--case "$SPECTEST_CASE")
+        # `${args[@]+"${args[@]}"}` rather than `"${args[@]}"`: macOS runners
+        # ship bash 3.2, where expanding an *empty* array under `set -u` is an
+        # "unbound variable" error — i.e. it would fail exactly in the default
+        # case where neither input is set.
+        #
+        # `spectest test` exits non-zero when a case fails, which fails the
+        # step — the whole point of putting it in a pipeline.
+        spectest test ${args[@]+"${args[@]}"}
