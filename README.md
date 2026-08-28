@@ -1,4 +1,4 @@
-# Githu Action for Spectest
+# Github Action for Spectest
 
 Run your [Spectest](https://docs.specific.dev/spectest) suite in GitHub Actions. Use this when you want to only run your Spectest suite in certain situations or as part of a larger pipeline.
 
