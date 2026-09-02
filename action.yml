@@ -17,8 +17,20 @@ inputs:
       connection in Settings → GitHub.
     required: false
     default: ''
+  filter:
+    description: >-
+      Regular expression matched against test and group names. A matching
+      test runs with its ancestors; a matching group runs every test in it,
+      including nested ones. Unanchored, so `checkout` is a substring search
+      and `^checkout$` is exact. Needs CLI v0.2.88 or newer, which `latest`
+      gives you. Omit to run the whole suite.
+    required: false
+    default: ''
   case:
-    description: Run a single test case (its id) plus its ancestors.
+    description: >-
+      Removed — use `filter` instead. Still declared so a workflow that sets
+      it fails with an explanation rather than silently running the whole
+      suite (GitHub only warns about an input an action does not declare).
     required: false
     default: ''
   path:
@@ -97,12 +109,35 @@ runs:
         # deployment.
         SPECTEST_SERVER: spectest.specific.dev:7878
         SPECTEST_PROJECT: ${{ inputs.project }}
+        SPECTEST_FILTER: ${{ inputs.filter }}
         SPECTEST_CASE: ${{ inputs.case }}
       run: |
         set -euo pipefail
+
+        # `case` was replaced by `filter`, and the two do not select the same
+        # thing: `case` took one test **id**, `filter` takes a regular
+        # expression matched against **names**. So this fails rather than
+        # translating — a silent translation would change which tests run.
+        # The CLI itself refuses `--case` the same way.
+        if [ -n "${SPECTEST_CASE:-}" ]; then
+          # No suggested pattern here. `case` named a test **id** and
+          # `filter` matches **names**, so anything derived from the old
+          # value is a guess. Teach the input instead.
+          echo "::error::The 'case' input has been removed. Use 'filter' instead:"
+          echo "::error::  filter: a regular expression matched against test and group names."
+          echo "::error::  A matching test runs with its ancestors; a matching group runs"
+          echo "::error::  every test in it, including nested ones. Unanchored, so"
+          echo "::error::  'checkout' is a substring search and '^checkout\$' is exact."
+          echo "::error::'filter' matches NAMES, not case ids. '$SPECTEST_CASE' is a case id;"
+          echo "::error::a pattern is tested against the names printed in the case tree."
+          echo "::error::See 'spectest docs /running'."
+          exit 1
+        fi
+
         args=()
         [ -n "${SPECTEST_PROJECT:-}" ] && args+=(--project-id "$SPECTEST_PROJECT")
-        [ -n "${SPECTEST_CASE:-}" ] && args+=(--case "$SPECTEST_CASE")
+        # Quoted, so a pattern holding spaces or `|` reaches the CLI whole.
+        [ -n "${SPECTEST_FILTER:-}" ] && args+=(--filter "$SPECTEST_FILTER")
         # `${args[@]+"${args[@]}"}` rather than `"${args[@]}"`: macOS runners
         # ship bash 3.2, where expanding an *empty* array under `set -u` is an
         # "unbound variable" error — i.e. it would fail exactly in the default
