@@ -26,6 +26,13 @@ inputs:
       gives you. Omit to run the whole suite.
     required: false
     default: ''
+  ignore-preexisting-failures:
+    description: >-
+      On pull requests, pass when every failure also occurred in the base run.
+      Spectest still records the failures. New failures and missing baselines
+      still fail, as do runs on main. Requires CLI v0.2.160 or newer.
+    required: false
+    default: 'false'
   case:
     description: >-
       Removed — use `filter` instead. Still declared so a workflow that sets
@@ -111,6 +118,7 @@ runs:
         SPECTEST_PROJECT: ${{ inputs.project }}
         SPECTEST_FILTER: ${{ inputs.filter }}
         SPECTEST_CASE: ${{ inputs.case }}
+        SPECTEST_IGNORE_PREEXISTING_FAILURES: ${{ inputs.ignore-preexisting-failures }}
       run: |
         set -euo pipefail
 
@@ -135,6 +143,11 @@ runs:
         fi
 
         args=()
+        case "$SPECTEST_IGNORE_PREEXISTING_FAILURES" in
+          true) args+=(--ignore-preexisting-failures) ;;
+          false) ;;
+          *) echo "::error::ignore-preexisting-failures must be 'true' or 'false'"; exit 1 ;;
+        esac
         [ -n "${SPECTEST_PROJECT:-}" ] && args+=(--project-id "$SPECTEST_PROJECT")
         # Quoted, so a pattern holding spaces or `|` reaches the CLI whole.
         [ -n "${SPECTEST_FILTER:-}" ] && args+=(--filter "$SPECTEST_FILTER")
@@ -143,7 +156,6 @@ runs:
         # "unbound variable" error — i.e. it would fail exactly in the default
         # case where neither input is set.
         #
-        # `spectest test` exits non-zero when a case fails, which fails the
-        # step — the whole point of putting it in a pipeline.
+        # The CLI controls the exit status, including the opt-in PR policy.
         # Replace bash so runner cancellation signals reach the CLI directly.
         exec spectest test ${args[@]+"${args[@]}"}
