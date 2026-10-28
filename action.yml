@@ -145,4 +145,5 @@ runs:
         #
         # `spectest test` exits non-zero when a case fails, which fails the
         # step — the whole point of putting it in a pipeline.
-        spectest test ${args[@]+"${args[@]}"}
+        # Replace bash so runner cancellation signals reach the CLI directly.
+        exec spectest test ${args[@]+"${args[@]}"}
