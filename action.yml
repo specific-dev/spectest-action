@@ -68,9 +68,10 @@ runs:
 
         repo=specific-dev/spectest
         if [ "$SPECTEST_VERSION" = latest ]; then
-          version=$(curl -fsSL "https://api.github.com/repos/$repo/releases/latest" \
-                    | grep -m1 '"tag_name"' | cut -d'"' -f4)
-          if [ -z "$version" ]; then
+          # Consume the whole response: grep -m1 can close the pipe while curl
+          # is still writing, failing installation under pipefail.
+          if ! version=$(curl -fsSL "https://api.github.com/repos/$repo/releases/latest" \
+                    | jq -er '.tag_name | select(type == "string" and length > 0)'); then
             echo "::error::could not resolve the latest spectest release"; exit 1
           fi
         else
