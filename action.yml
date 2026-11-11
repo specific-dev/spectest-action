@@ -33,6 +33,15 @@ inputs:
       still fail, as do runs on main. Requires CLI v0.2.160 or newer.
     required: false
     default: 'false'
+  changed-only:
+    description: >-
+      Run only new and modified tests: those whose file under `spectest/`
+      changed against the branch's base, or that import a changed helper,
+      each with its ancestors. Changes to application code select nothing,
+      and a branch that touches no test runs nothing and passes. With
+      `filter`, a test must satisfy both. Requires CLI v0.2.169 or newer.
+    required: false
+    default: 'false'
   case:
     description: >-
       Removed — use `filter` instead. Still declared so a workflow that sets
@@ -120,6 +129,7 @@ runs:
         SPECTEST_FILTER: ${{ inputs.filter }}
         SPECTEST_CASE: ${{ inputs.case }}
         SPECTEST_IGNORE_PREEXISTING_FAILURES: ${{ inputs.ignore-preexisting-failures }}
+        SPECTEST_CHANGED_ONLY: ${{ inputs.changed-only }}
       run: |
         set -euo pipefail
 
@@ -148,6 +158,15 @@ runs:
           true) args+=(--ignore-preexisting-failures) ;;
           false) ;;
           *) echo "::error::ignore-preexisting-failures must be 'true' or 'false'"; exit 1 ;;
+        esac
+        # A workflow expression such as
+        # `${{ github.event_name == 'pull_request' }}` arrives as one of these
+        # two strings. Anything else is a typo, and a typo here would silently
+        # run — and bill — the whole suite.
+        case "$SPECTEST_CHANGED_ONLY" in
+          true) args+=(--changed-only) ;;
+          false) ;;
+          *) echo "::error::changed-only must be 'true' or 'false'"; exit 1 ;;
         esac
         [ -n "${SPECTEST_PROJECT:-}" ] && args+=(--project-id "$SPECTEST_PROJECT")
         # Quoted, so a pattern holding spaces or `|` reaches the CLI whole.
