@@ -50,6 +50,16 @@ This example will run all tests and groups that contain the term "checkout":
 
 The dialect is Rust's [`regex` crate](https://docs.rs/regex/latest/regex/#syntax).
 
+## Running only new and modified tests
+
+Set `changed-only` to run the tests that have been added or modified and skip the rest. This can for example be used for fast runs on PRs and only run the full suite on `main` or before releases.
+
+```yaml
+      - uses: specific-dev/spectest-action@v1
+        with:
+          changed-only: ${{ github.event_name == 'pull_request' }}
+```
+
 ## Inputs
 
 | Input | Default | Description |
@@ -57,6 +67,7 @@ The dialect is Rust's [`regex` crate](https://docs.rs/regex/latest/regex/#syntax
 | `project` | — | Project id (`proj_…`). Only necessary when one repository backs more than one project. |
 | `filter` | — | Run part of the suite. A regular expression matched against test and group names. |
 | `ignore-preexisting-failures` | `false` | Allow matching base-run failures on pull requests. Useful to avoid blocking CI on existing failures. |
+| `changed-only` | `false` | Run only new and modified tests. |
 | `version` | `latest` | CLI release to install, e.g. `v0.2.88`. Prefer to leave this to the default `latest`. |
 | `path` | `.` | Project directory containing `spectest/`. |
 

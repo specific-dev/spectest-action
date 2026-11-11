@@ -16,6 +16,7 @@ async function run(input: string, extra: Record<string, string> = {}) {
       ...Bun.env,
       PATH: `${dir}:${Bun.env.PATH}`,
       SPECTEST_IGNORE_PREEXISTING_FAILURES: input,
+      SPECTEST_CHANGED_ONLY: action.inputs["changed-only"].default,
       SPECTEST_PROJECT: "",
       SPECTEST_FILTER: "",
       SPECTEST_CASE: "",
@@ -45,6 +46,21 @@ test("rejects invalid policy values before starting a run", async () => {
     const result = await run(input);
     expect(result.code).toBe(1);
     expect(result.output).toContain("must be 'true' or 'false'");
+    expect(result.output).not.toContain("test\0");
+  }
+});
+
+test("forwards changed-only, alone and beside a filter", async () => {
+  expect(await run("false", { SPECTEST_CHANGED_ONLY: "true" })).toEqual({ code: 0, output: "test\0--changed-only\0" });
+  const both = await run("true", { SPECTEST_CHANGED_ONLY: "true", SPECTEST_FILTER: "checkout" });
+  expect(both).toEqual({ code: 0, output: "test\0--ignore-preexisting-failures\0--changed-only\0--filter\0checkout\0" });
+});
+
+test("rejects an invalid changed-only value before starting a run", async () => {
+  for (const input of ["yes", "", "true; echo unexpected"]) {
+    const result = await run("false", { SPECTEST_CHANGED_ONLY: input });
+    expect(result.code).toBe(1);
+    expect(result.output).toContain("changed-only must be 'true' or 'false'");
     expect(result.output).not.toContain("test\0");
   }
 });
